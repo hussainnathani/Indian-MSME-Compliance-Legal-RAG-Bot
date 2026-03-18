@@ -297,42 +297,39 @@ if "seeded" not in st.session_state:
 
 
 # ─── Helper Functions ────────────────────────────────────────
-def check_api_health() -> bool:
-    """Check if the FastAPI backend is running."""
-    try:
-        response = requests.get(f"{API_BASE}/api/health", timeout=3)
-        return response.status_code == 200
-    except requests.exceptions.ConnectionError:
-        return False
+import os
+import tempfile
+from app.rag.chain import query_rag
+from app.rag.ingestion import ingest_pdf
+import app.seed_data
 
+def check_api_health() -> bool:
+    """Check if the backend systems are ready (always True in monolith mode)."""
+    return True
 
 def query_bot(question: str) -> dict:
-    """Send a question to the RAG API."""
-    response = requests.post(
-        f"{API_BASE}/api/query",
-        json={"question": question},
-        timeout=60,
-    )
-    response.raise_for_status()
-    return response.json()
+    """Call the RAG pipeline directly."""
+    answer, sources = query_rag(question)
+    return {"answer": answer, "sources": sources}
 
+def trigger_seed_data() -> dict:
+    """Trigger knowledge base seeding directly."""
+    stats = app.seed_data.main()
+    return {"chunks_ingested": stats}
 
-def seed_knowledge_base() -> dict:
-    """Trigger knowledge base seeding."""
-    response = requests.post(f"{API_BASE}/api/seed", timeout=120)
-    response.raise_for_status()
-    return response.json()
-
-
-def upload_pdf(file) -> dict:
-    """Upload a PDF for ingestion."""
-    response = requests.post(
-        f"{API_BASE}/api/ingest/pdf",
-        files={"file": (file.name, file.getvalue(), "application/pdf")},
-        timeout=120,
-    )
-    response.raise_for_status()
-    return response.json()
+def upload_pdf_direct(file) -> dict:
+    """Upload and ingest a PDF directly."""
+    # Write the uploaded file to a temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        tmp.write(file.getvalue())
+        tmp_path = tmp.name
+    
+    try:
+        chunks = ingest_pdf(tmp_path)
+    finally:
+        os.remove(tmp_path)
+        
+    return {"chunks_ingested": len(chunks)}
 
 
 def render_sources(sources: list[dict]):
@@ -392,7 +389,7 @@ with st.sidebar:
         if st.button("🌱 Seed Data", use_container_width=True, disabled=not api_ok):
             with st.spinner("Seeding knowledge base..."):
                 try:
-                    result = seed_knowledge_base()
+                    result = trigger_seed_data()
                     st.session_state.seeded = True
                     st.success(f"✅ {result['chunks_ingested']} chunks loaded!")
                     time.sleep(1)
@@ -416,7 +413,7 @@ with st.sidebar:
         if st.button("📤 Ingest PDF", use_container_width=True):
             with st.spinner(f"Processing {uploaded_file.name}..."):
                 try:
-                    result = upload_pdf(uploaded_file)
+                    result = upload_pdf_direct(uploaded_file)
                     st.success(f"✅ {result['chunks_ingested']} chunks ingested!")
                 except Exception as e:
                     st.error(f"Error: {e}")
