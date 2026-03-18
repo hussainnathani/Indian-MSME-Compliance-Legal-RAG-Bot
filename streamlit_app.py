@@ -16,7 +16,9 @@ st.set_page_config(
 )
 
 # ─── API Configuration ──────────────────────────────────────
-API_BASE = "http://localhost:8000"
+import os
+# Use 127.0.0.1 to prevent IPv6 Docker resolution bugs, or allow external URL via env var
+API_BASE = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 # ─── Custom CSS for Premium Look ────────────────────────────
 st.markdown("""
