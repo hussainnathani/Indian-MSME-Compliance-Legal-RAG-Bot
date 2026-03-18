@@ -78,6 +78,3 @@ The entire application can be containerized using **Docker**, making setup, loca
 
 ---
 
-├── .gitignore
-├── Dockerfile
-└── README.md
