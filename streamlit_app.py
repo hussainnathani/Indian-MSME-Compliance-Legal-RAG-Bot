@@ -4,7 +4,6 @@ A premium chat interface for querying Indian MSME compliance regulations.
 """
 
 import streamlit as st
-import requests
 import time
 
 # ─── Page Config ─────────────────────────────────────────────
@@ -17,8 +16,6 @@ st.set_page_config(
 
 # ─── API Configuration ──────────────────────────────────────
 import os
-# Use 127.0.0.1 to prevent IPv6 Docker resolution bugs, or allow external URL via env var
-API_BASE = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 # ─── Custom CSS for Premium Look ────────────────────────────
 st.markdown("""
@@ -296,40 +293,37 @@ if "seeded" not in st.session_state:
     st.session_state.seeded = False
 
 
-# ─── Helper Functions ────────────────────────────────────────
-import os
-import tempfile
+# ─── Imports for direct RAG execution ─────────────────────────
 from app.rag.chain import query_rag
-from app.rag.ingestion import ingest_pdf
-import app.seed_data
+from app.seed_data import SEED_DOCUMENTS
+from app.rag.ingestion import ingest_text, ingest_pdf
 
+# ─── Helper Functions ────────────────────────────────────────
 def check_api_health() -> bool:
-    """Check if the backend systems are ready (always True in monolith mode)."""
+    """Backend is now integrated directly."""
     return True
 
+
 def query_bot(question: str) -> dict:
-    """Call the RAG pipeline directly."""
-    answer, sources = query_rag(question)
-    return {"answer": answer, "sources": sources}
+    """Query the RAG system directly."""
+    return query_rag(question)
 
-def trigger_seed_data() -> dict:
-    """Trigger knowledge base seeding directly."""
-    stats = app.seed_data.main()
-    return {"chunks_ingested": stats}
 
-def upload_pdf_direct(file) -> dict:
-    """Upload and ingest a PDF directly."""
-    # Write the uploaded file to a temporary location
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(file.getvalue())
-        tmp_path = tmp.name
-    
-    try:
-        chunks = ingest_pdf(tmp_path)
-    finally:
-        os.remove(tmp_path)
-        
-    return {"chunks_ingested": len(chunks)}
+def seed_knowledge_base() -> dict:
+    """Seed the knowledge base directly."""
+    total_chunks = 0
+    for doc in SEED_DOCUMENTS:
+        count = ingest_text(doc["content"], doc["metadata"])
+        total_chunks += count
+    return {"chunks_ingested": total_chunks}
+
+
+def upload_pdf(file) -> dict:
+    """Upload and ingest a PDF document directly."""
+    contents = file.getvalue()
+    filename = file.name
+    count = ingest_pdf(contents, filename)
+    return {"chunks_ingested": count}
 
 
 def render_sources(sources: list[dict]):
@@ -371,13 +365,12 @@ with st.sidebar:
 
     st.divider()
 
-    # ── API Status ──
+    # ── System Status ──
     api_ok = check_api_health()
     if api_ok:
-        st.markdown('<span class="status-badge status-success">✅ API Connected</span>', unsafe_allow_html=True)
+        st.markdown('<span class="status-badge status-success">✅ System Ready</span>', unsafe_allow_html=True)
     else:
-        st.markdown('<span class="status-badge status-error">❌ API Offline</span>', unsafe_allow_html=True)
-        st.caption("Start the backend: `uvicorn app.main:app --reload`")
+        st.markdown('<span class="status-badge status-error">❌ System Offline</span>', unsafe_allow_html=True)
 
     st.divider()
 
@@ -389,7 +382,7 @@ with st.sidebar:
         if st.button("🌱 Seed Data", use_container_width=True, disabled=not api_ok):
             with st.spinner("Seeding knowledge base..."):
                 try:
-                    result = trigger_seed_data()
+                    result = seed_knowledge_base()
                     st.session_state.seeded = True
                     st.success(f"✅ {result['chunks_ingested']} chunks loaded!")
                     time.sleep(1)
@@ -413,7 +406,7 @@ with st.sidebar:
         if st.button("📤 Ingest PDF", use_container_width=True):
             with st.spinner(f"Processing {uploaded_file.name}..."):
                 try:
-                    result = upload_pdf_direct(uploaded_file)
+                    result = upload_pdf(uploaded_file)
                     st.success(f"✅ {result['chunks_ingested']} chunks ingested!")
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -566,14 +559,6 @@ if prompt := st.chat_input("Ask about Indian MSME compliance...", disabled=not a
                     "sources": sources,
                 })
 
-            except requests.exceptions.ConnectionError:
-                error_msg = "❌ Cannot connect to the API. Please make sure the backend is running."
-                st.error(error_msg)
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": error_msg,
-                    "sources": [],
-                })
             except Exception as e:
                 error_msg = f"❌ Error: {str(e)}"
                 st.error(error_msg)
