@@ -294,6 +294,7 @@ if "seeded" not in st.session_state:
 
 
 # ─── Imports for direct RAG execution ─────────────────────────
+import traceback
 from app.rag.chain import query_rag
 from app.seed_data import SEED_DOCUMENTS
 from app.rag.ingestion import ingest_text, ingest_pdf
@@ -439,9 +440,11 @@ with st.sidebar:
                         "sources": result.get("sources", []),
                     })
                 except Exception as e:
+                    tb = traceback.format_exc()
+                    error_msg = f"❌ Error: {str(e)}\n\n```python\n{tb}\n```"
                     st.session_state.messages.append({
                         "role": "assistant",
-                        "content": f"❌ Error: {str(e)}",
+                        "content": error_msg,
                         "sources": [],
                     })
             st.rerun()
@@ -524,9 +527,11 @@ if not st.session_state.messages:
                             "sources": result.get("sources", []),
                         })
                     except Exception as e:
+                        tb = traceback.format_exc()
+                        error_msg = f"❌ Error: {str(e)}\n\n```python\n{tb}\n```"
                         st.session_state.messages.append({
                             "role": "assistant",
-                            "content": f"❌ Error: {str(e)}",
+                            "content": error_msg,
                             "sources": [],
                         })
                 st.rerun()
@@ -560,8 +565,9 @@ if prompt := st.chat_input("Ask about Indian MSME compliance...", disabled=not a
                 })
 
             except Exception as e:
-                error_msg = f"❌ Error: {str(e)}"
-                st.error(error_msg)
+                tb = traceback.format_exc()
+                error_msg = f"❌ Error: {str(e)}\n\n```python\n{tb}\n```"
+                st.error(f"Error details: {str(e)}")
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": error_msg,
